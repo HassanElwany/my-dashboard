@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Secrets
+.env
+
+# Node/Next.js (for later)
+node_modules/
+.next/
