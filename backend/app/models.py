@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Date, Float
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
 
@@ -9,3 +10,51 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # back_populates means the DailyLog table will have a matching variable named "owner"
+    daily_logs = relationship("DailyLog", back_populates="owner")
+
+
+# DailyLog class below the User class
+class DailyLog(Base):
+    __tablename__ = "daily_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # The Foreign Key: This column strictly holds the ID from the "users" table.
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # The specific calendar day for this log
+    date = Column(Date, nullable=False)
+    
+    # Track your daily body weight 
+    current_weight = Column(Float, nullable=True) 
+
+    # The Python relationship linking back to the User class
+    owner = relationship("User", back_populates="daily_logs")
+    # The cascade rule ensures cleanup. "delete-orphan" means if a meal is removed 
+    # from a daily log, delete it from the database entirely.
+    meals = relationship("Meal", back_populates="daily_log", cascade="all, delete-orphan")
+
+
+
+class Meal(Base):
+    __tablename__ = "meals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    
+    # The Foreign Key linking this meal to a specific day
+    daily_log_id = Column(Integer, ForeignKey("daily_logs.id"), nullable=False)
+    
+    # What did you eat? (e.g., "Breakfast", "Koshary", "Post-workout Shake")
+    name = Column(String, nullable=False) 
+    
+    # Nutritional Info
+    calories = Column(Integer, nullable=False)
+    
+    # We use Float and default to 0.0 so we don't get errors if you only track calories
+    protein = Column(Float, default=0.0) 
+    carbs = Column(Float, default=0.0)
+    fats = Column(Float, default=0.0)
+
+    # The relationship linking back up to the DailyLog
+    daily_log = relationship("DailyLog", back_populates="meals")
