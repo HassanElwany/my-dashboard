@@ -9,7 +9,14 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    age = Column(Integer, nullable=True)
+    gender = Column(String, nullable=True)
+    height = Column(Float, nullable=True) # In cm
+    country = Column(String, nullable=True)
+    preferred_cuisine = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    # Inside your User class, add this below daily_logs:
+    diet_plans = relationship("DietPlan", back_populates="owner", cascade="all, delete-orphan")
     # back_populates means the DailyLog table will have a matching variable named "owner"
     daily_logs = relationship("DailyLog", back_populates="owner")
 
@@ -58,3 +65,14 @@ class Meal(Base):
 
     # The relationship linking back up to the DailyLog
     daily_log = relationship("DailyLog", back_populates="meals")
+
+
+class DietPlan(Base):
+    __tablename__ = "diet_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    owner = relationship("User", back_populates="diet_plans")
