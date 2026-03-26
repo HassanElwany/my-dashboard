@@ -1,4 +1,5 @@
 import os
+import requests
 import google.generativeai as genai
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,7 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 import jwt
 from jwt.exceptions import InvalidTokenError
-
+from datetime import datetime, timedelta, timezone
 from app.database import engine, get_db
 from app import models, schemas, security # <-- IMPORT security
 
@@ -22,6 +23,14 @@ app = FastAPI(
     description="Backend for personal SaaS dashboard",
     version="0.1.0"
 )
+
+# --- FOOTBALL API CONFIG ---
+FOOTBALL_API_KEY = os.getenv("API_FOOTBALL_KEY")
+FOOTBALL_API_URL = "https://v3.football.api-sports.io"
+
+FOOTBALL_HEADERS = {
+    "x-apisports-key": FOOTBALL_API_KEY
+}
 
 app.add_middleware(
     CORSMiddleware,
@@ -145,7 +154,13 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         gender=user.gender,
         height=user.height,
         country=user.country,
-        preferred_cuisine=user.preferred_cuisine
+        preferred_cuisine=user.preferred_cuisine,
+        medical_conditions=user.medical_conditions,
+        dietary_preference=user.dietary_preference,
+        food_dislikes=user.food_dislikes,
+        national_team=user.national_team,
+        local_team=user.local_team,
+        international_team=user.international_team
     )
     
     db.add(new_user)
@@ -196,41 +211,86 @@ def get_user_plans(
 # 2. Generate a new plan and enforce the 10-plan limit
 @app.post("/plans/generate", response_model=schemas.DietPlanResponse)
 def generate_and_save_plan(
+    language: str = "en",
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Check how many plans the user currently has
+    # --- NEW: STRICT 7-DAY RATE LIMITING ---
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    
+    # Fetch plans generated ONLY within the last 7 days
+    recent_plans = db.query(models.DietPlan).filter(
+        models.DietPlan.user_id == current_user.id,
+        models.DietPlan.created_at >= seven_days_ago
+    ).order_by(models.DietPlan.created_at.desc()).all()
+    
+    # If they have generated 2 or more in the last week, hard block the request
+    if len(recent_plans) >= 2:
+        raise HTTPException(
+            status_code=429, 
+            detail="Limit reached: You can only generate 2 plans per 7-day period."
+        )
+    # ---------------------------------------
+
+    # Manage the overall 10-plan history limit
     user_plans = db.query(models.DietPlan).filter(
         models.DietPlan.user_id == current_user.id
     ).order_by(models.DietPlan.created_at.asc()).all()
 
-    # If they have 10 or more, delete the oldest one (FIFO)
     if len(user_plans) >= 10:
         db.delete(user_plans[0])
         db.commit()
 
-    # 2. Extract personal details for the prompt
+    # Extract constraints
     age_str = f"{current_user.age}-year-old" if current_user.age else "adult"
     gender_str = current_user.gender or "person"
     height_str = f"{current_user.height} cm tall" if current_user.height else ""
     location_str = f"living in {current_user.country}" if current_user.country else ""
-    cuisine_str = f"They strongly prefer {current_user.preferred_cuisine} cuisine." if current_user.preferred_cuisine else ""
+    cuisine_str = f"Preferred Cuisine: {current_user.preferred_cuisine}" if current_user.preferred_cuisine else "No specific cuisine preference."
+    
+    medical_str = f"MUST ACCOMMODATE MEDICAL CONDITION: {current_user.medical_conditions}." if current_user.medical_conditions else "No specific medical conditions."
+    diet_str = f"STRICT DIETARY STYLE: {current_user.dietary_preference}." if current_user.dietary_preference else "No specific diet style."
+    dislikes_str = f"DANGER - ALLERGIES/DISLIKES: DO NOT INCLUDE {current_user.food_dislikes} under any circumstances." if current_user.food_dislikes else "No known food allergies."
+
+    target_lang = "Arabic (العربية)" if language == "ar" else "English"
 
     prompt = f"""
-    Act as an expert sports nutritionist. Your client is a {age_str} {gender_str}, {height_str}, {location_str}. 
-    They want to maintain muscle mass and general health.
-    {cuisine_str}
+    You are an elite, clinical sports nutritionist. You are designing a custom 7-DAY meal plan for your client.
+
+    [CLIENT PROFILE]
+    - Demographics: {age_str} {gender_str}, {height_str}, {location_str}.
+    - Goal: Maintain muscle mass and optimize general health.
+    - {cuisine_str}
+
+    [CRITICAL CONSTRAINTS - DO NOT IGNORE]
+    - {medical_str}
+    - {diet_str}
+    - {dislikes_str}
+    *If a dish traditionally contains an allergen or violates the diet style, you MUST provide a safe, specific alternative/modification.*
+
+    [YOUR TASK]
+    1. Write the ENTIRE response in {target_lang}. 
+    2. You MUST use the exact formatting structure below. Do not output large paragraphs of text.
+
+    [FORMATTING TEMPLATE]
+    **[A brief 1-sentence encouraging opening]**
+
+    ### 📅 Day 1
+    * **🍳 Breakfast:** [Dish Name] ([Calories] kcal | [Protein]g)
+    * **🥗 Lunch:** [Dish Name] ([Calories] kcal | [Protein]g)
+    * **🍗 Dinner:** [Dish Name] ([Calories] kcal | [Protein]g)
+    * **🍎 Snack:** [Dish Name] ([Calories] kcal | [Protein]g)
     
-    Provide a highly structured, 1-day sample meal plan (Breakfast, Lunch, Dinner, and one Snack). 
-    Suggest specific, culturally relevant dishes. Include estimated calories and protein for each meal.
+    *(Repeat for Days 2 through 7)*
+
+    **💡 Tip of the Week:** [One brief sentence about hydration or prep]
     """
 
-    # 3. Call Gemini and save the result to the database
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
         
-        new_plan = models.DietPlan(user_id=current_user.id, content=response.text)
+        new_plan = models.DietPlan(user_id=current_user.id, content=response.text.strip())
         db.add(new_plan)
         db.commit()
         db.refresh(new_plan)
@@ -246,7 +306,6 @@ def analyze_daily_diet(
     db: Session = Depends(get_db), 
     current_user: models.User = Depends(get_current_user)
 ):
-    # 1. Fetch the specific daily log and verify ownership
     log = db.query(models.DailyLog).filter(
         models.DailyLog.id == log_id, 
         models.DailyLog.user_id == current_user.id
@@ -255,7 +314,6 @@ def analyze_daily_diet(
     if not log:
         raise HTTPException(status_code=404, detail="Log not found")
 
-    # 2. Calculate the totals
     total_cals = sum(m.calories for m in log.meals)
     total_protein = sum(m.protein for m in log.meals)
     total_carbs = sum(m.carbs for m in log.meals)
@@ -264,30 +322,133 @@ def analyze_daily_diet(
     meal_descriptions = [f"{m.name} ({m.calories} kcal, {m.protein}g protein)" for m in log.meals]
     meals_str = ", ".join(meal_descriptions) if meal_descriptions else "No meals logged yet."
 
-    # 3. Extract the user's personal details gracefully (in case they left fields blank)
+    # 1. Extract identical strict profile data
     age_str = f"{current_user.age}-year-old" if current_user.age else "adult"
     gender_str = current_user.gender or "person"
+    height_str = f"{current_user.height} cm tall" if current_user.height else ""
     location_str = f"living in {current_user.country}" if current_user.country else ""
-    cuisine_str = f"They prefer {current_user.preferred_cuisine} cuisine." if current_user.preferred_cuisine else ""
-
-    # 4. Construct the DYNAMIC prompt
-    prompt = f"""
-    Act as an expert sports nutritionist. Your client is a {age_str} {gender_str} {location_str}, focused on maintaining muscle mass and general health.
-    {cuisine_str}
+    cuisine_str = f"Preferred Cuisine: {current_user.preferred_cuisine}" if current_user.preferred_cuisine else "No specific cuisine preference."
     
-    Today's Log:
-    Weight: {log.current_weight or 'Not recorded'} kg
-    Meals eaten so far: {meals_str}
-    Total Macros: {total_cals} kcal, {total_protein}g Protein, {total_carbs}g Carbs, {total_fats}g Fats.
+    # 2. Extract identical strict constraints
+    medical_str = f"MUST ACCOMMODATE MEDICAL CONDITION: {current_user.medical_conditions}." if current_user.medical_conditions else "No specific medical conditions."
+    diet_str = f"STRICT DIETARY STYLE: {current_user.dietary_preference}." if current_user.dietary_preference else "No specific diet style."
+    dislikes_str = f"DANGER - ALLERGIES/DISLIKES: DO NOT INCLUDE {current_user.food_dislikes} under any circumstances." if current_user.food_dislikes else "No known food allergies."
 
-    Provide a brief, encouraging 2-sentence analysis of their day so far. 
-    Then, suggest ONE specific, culturally appropriate dish they could eat for their next meal to optimize their protein intake based on their preferences. Keep the entire response under 4 sentences.
+    # 3. Formulate the daily-specific task with the strict rules
+    prompt = f"""
+    You are an elite, clinical sports nutritionist. Your job is to analyze your client's daily food intake and suggest their next meal.
+
+    [CLIENT PROFILE]
+    - Demographics: {age_str} {gender_str}, {height_str}, {location_str}.
+    - Goal: Maintain muscle mass and optimize general health.
+    - {cuisine_str}
+
+    [CRITICAL CONSTRAINTS - DO NOT IGNORE]
+    - {medical_str}
+    - {diet_str}
+    - {dislikes_str}
+
+    [TODAY'S LOG]
+    - Weight today: {log.current_weight or 'Not recorded'} kg
+    - Meals eaten so far: {meals_str}
+    - Macros consumed: {total_cals} kcal | {total_protein}g Protein | {total_carbs}g Carbs | {total_fats}g Fats.
+
+    [YOUR TASK]
+    1. Write exactly ONE encouraging sentence analyzing their macro progress today.
+    2. Write exactly TWO sentences suggesting a specific, culturally appropriate dish for their NEXT meal to optimize their remaining protein and calorie needs.
+    3. Ensure the suggested meal STRICTLY OBEYS all medical conditions, dietary styles, and allergies listed above. Provide safe alternatives if necessary.
     """
 
-    # 5. Call the Gemini API
     try:
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(prompt)
-        return {"analysis": response.text}
+        return {"analysis": response.text.strip()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI Error: {str(e)}")
+    
+
+# --- FOOTBALL ANALYTICS HUB ---
+
+def fetch_team_data(team_name: str):
+    """Helper function to search a team and get its matches."""
+    if not team_name:
+        return None
+        
+    try:
+        # 1. Search for the Team ID and Logo
+        search_res = requests.get(
+            f"{FOOTBALL_API_URL}/teams", 
+            headers=FOOTBALL_HEADERS, 
+            params={"search": team_name}
+        )
+        search_data = search_res.json()
+        
+        if not search_data.get("response"):
+            return {"search_query": team_name, "error": "Team not found in API"}
+            
+        team_info = search_data["response"][0]["team"]
+        team_id = team_info["id"]
+        
+        # 2. Fetch the Next Fixture
+        next_res = requests.get(
+            f"{FOOTBALL_API_URL}/fixtures", 
+            headers=FOOTBALL_HEADERS, 
+            params={"team": team_id, "next": 1}
+        )
+        next_data = next_res.json()
+        
+        # 3. Fetch the Last Fixture (Recent Result)
+        last_res = requests.get(
+            f"{FOOTBALL_API_URL}/fixtures", 
+            headers=FOOTBALL_HEADERS, 
+            params={"team": team_id, "last": 1}
+        )
+        last_data = last_res.json()
+        
+        # Format the fixtures if they exist
+        next_match = None
+        if next_data.get("response"):
+            fix = next_data["response"][0]
+            next_match = {
+                "date": fix["fixture"]["date"],
+                "competition": fix["league"]["name"],
+                "home_team": fix["teams"]["home"]["name"],
+                "home_logo": fix["teams"]["home"]["logo"],
+                "away_team": fix["teams"]["away"]["name"],
+                "away_logo": fix["teams"]["away"]["logo"],
+            }
+
+        last_match = None
+        if last_data.get("response"):
+            fix = last_data["response"][0]
+            last_match = {
+                "date": fix["fixture"]["date"],
+                "competition": fix["league"]["name"],
+                "home_team": fix["teams"]["home"]["name"],
+                "home_logo": fix["teams"]["home"]["logo"],
+                "home_score": fix["goals"]["home"],
+                "away_team": fix["teams"]["away"]["name"],
+                "away_logo": fix["teams"]["away"]["logo"],
+                "away_score": fix["goals"]["away"],
+            }
+            
+        return {
+            "id": team_id,
+            "name": team_info["name"],
+            "logo": team_info["logo"],
+            "next_match": next_match,
+            "last_match": last_match
+        }
+    except Exception as e:
+        return {"search_query": team_name, "error": str(e)}
+
+
+@app.get("/football/hub")
+def get_football_dashboard(current_user: models.User = Depends(get_current_user)):
+    """Fetches data for the user's 3 chosen teams."""
+    # We use the team names saved in the user's database row!
+    return {
+        "national_team": fetch_team_data(current_user.national_team),
+        "local_team": fetch_team_data(current_user.local_team),
+        "international_team": fetch_team_data(current_user.international_team)
+    }

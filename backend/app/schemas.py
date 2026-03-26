@@ -10,8 +10,13 @@ class UserCreate(BaseModel):
     height: Optional[float] = None
     country: Optional[str] = None
     preferred_cuisine: Optional[str] = None
+    medical_conditions: Optional[str] = None
+    dietary_preference: Optional[str] = None
+    food_dislikes: Optional[str] = None
+    national_team: Optional[str] = None
+    local_team: Optional[str] = None
+    international_team: Optional[str] = None
 
-# Schema for data going OUT to the frontend (API -> Client)
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -20,9 +25,14 @@ class UserResponse(BaseModel):
     height: Optional[float]
     country: Optional[str]
     preferred_cuisine: Optional[str]
+    medical_conditions: Optional[str]
+    dietary_preference: Optional[str]
+    food_dislikes: Optional[str]
+    national_team: Optional[str]
+    local_team: Optional[str]
+    international_team: Optional[str]
     created_at: datetime
 
-    # This tells Pydantic to accept SQLAlchemy objects, not just Python dictionaries
     model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
