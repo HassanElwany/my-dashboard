@@ -16,7 +16,7 @@ def create_log(log: schemas.DailyLogCreate, db: Session = Depends(get_db), user:
     db.add(new_log); db.commit(); db.refresh(new_log)
     return new_log
 
-@router.get("/logs/")
+@router.get("/logs/", response_model=list[schemas.DailyLogResponse])
 def get_logs(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     return db.query(models.DailyLog).filter(models.DailyLog.user_id == user.id).order_by(models.DailyLog.date.desc()).all()
 

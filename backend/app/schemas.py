@@ -16,6 +16,7 @@ class UserCreate(BaseModel):
     national_team: Optional[str] = None
     local_team: Optional[str] = None
     international_team: Optional[str] = None
+    tracked_stocks: Optional[str] = "AAPL,MSFT,NVDA,COMI.CA,HRHO.CA"
 
 class UserResponse(BaseModel):
     id: int
@@ -31,6 +32,7 @@ class UserResponse(BaseModel):
     national_team: Optional[str]
     local_team: Optional[str]
     international_team: Optional[str]
+    tracked_stocks: Optional[str]
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

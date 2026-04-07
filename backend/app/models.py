@@ -22,11 +22,12 @@ class User(Base):
     medical_conditions = Column(String, nullable=True)
     dietary_preference = Column(String, nullable=True)
     food_dislikes = Column(String, nullable=True)
-
+    tracked_stocks = Column(String, default="AAPL,MSFT,NVDA,COMI.CA,HRHO.CA")
     # --- FOOTBALL PREFERENCES ---
     national_team = Column(String, nullable=True)
     local_team = Column(String, nullable=True)
     international_team = Column(String, nullable=True)
+    
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

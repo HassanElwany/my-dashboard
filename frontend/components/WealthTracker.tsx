@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Activity, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import { StockQuote } from "../types";
 import SectionHeader from "./SectionHeader";
@@ -10,15 +11,21 @@ export default function WealthTracker() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Default watchlist: Mix of US Tech and EGX (Egyptian Stock Exchange)
-  const defaultTickers = "AAPL,MSFT,NVDA,COMI.CA,HRHO.CA";
-
   const fetchMarketData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`http://localhost:8000/finance/quotes?symbols=${defaultTickers}`);
+      // 1. Grab the secure token
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("Authentication error. Please log in again.");
+
+      // 2. Fetch personalized data from the backend
+      const res = await fetch(`http://localhost:8000/finance/quotes`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
       if (!res.ok) throw new Error("Market data feed offline.");
+      
       const data = await res.json();
       setQuotes(data.quotes);
     } catch (err: any) {
@@ -56,40 +63,41 @@ export default function WealthTracker() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           {quotes.map((quote) => (
-            <div 
-              key={quote.symbol} 
-              className={`bg-[#161625] rounded-[12px] border-b-4 ${quote.is_positive ? 'border-b-[#10B981]' : 'border-b-[#EF4444]'} border border-[#2A2A3D] p-[16px] flex flex-col justify-between shadow-lg transition-transform duration-300 hover:-translate-y-1`}
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex flex-col overflow-hidden">
-                  <span className="text-[14px] font-black text-[#FFFFFF] tracking-wider">{quote.symbol.replace('.CA', '')}</span>
-                  <span className="text-[9px] uppercase tracking-widest text-[#9CA3AF] truncate max-w-[100px]" title={quote.short_name}>
-                    {quote.short_name}
-                  </span>
+            <Link href={`/stock/${quote.symbol}`} key={quote.symbol} className="block group">
+              <div 
+                className={`bg-[#161625] h-full rounded-[12px] border-b-4 ${quote.is_positive ? 'border-b-[#10B981]' : 'border-b-[#EF4444]'} border border-[#2A2A3D] p-[16px] flex flex-col justify-between shadow-lg transition-all duration-300 group-hover:-translate-y-1 group-hover:border-[#4B5563] cursor-pointer`}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="text-[14px] font-black text-[#FFFFFF] tracking-wider">{quote.symbol.replace('.CA', '')}</span>
+                    <span className="text-[9px] uppercase tracking-widest text-[#9CA3AF] truncate max-w-[100px]" title={quote.short_name}>
+                      {quote.short_name}
+                    </span>
+                  </div>
+                  {quote.is_positive ? (
+                    <TrendingUp className="w-4 h-4 text-[#10B981]" />
+                  ) : (
+                    <TrendingDown className="w-4 h-4 text-[#EF4444]" />
+                  )}
                 </div>
-                {quote.is_positive ? (
-                  <TrendingUp className="w-4 h-4 text-[#10B981]" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-[#EF4444]" />
-                )}
-              </div>
 
-              <div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-[12px] font-bold text-[#9CA3AF]">{quote.currency}</span>
-                  <span className="text-[24px] font-extrabold text-[#FFFFFF] leading-none">
-                    {quote.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-                
-                <div className={`flex items-center gap-2 mt-2 text-[11px] font-bold uppercase tracking-wider ${quote.is_positive ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                  <span>{quote.is_positive ? '+' : ''}{quote.change_amount.toFixed(2)}</span>
-                  <span className="bg-[#0D0D1A] px-1.5 py-0.5 rounded border border-[#2A2A3D]">
-                    {quote.is_positive ? '+' : ''}{quote.change_percent.toFixed(2)}%
-                  </span>
+                <div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[12px] font-bold text-[#9CA3AF]">{quote.currency}</span>
+                    <span className="text-[24px] font-extrabold text-[#FFFFFF] leading-none">
+                      {quote.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  
+                  <div className={`flex items-center gap-2 mt-2 text-[11px] font-bold uppercase tracking-wider ${quote.is_positive ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                    <span>{quote.is_positive ? '+' : ''}{quote.change_amount.toFixed(2)}</span>
+                    <span className="bg-[#0D0D1A] px-1.5 py-0.5 rounded border border-[#2A2A3D] group-hover:bg-[#2A2A3D] transition-colors">
+                      {quote.is_positive ? '+' : ''}{quote.change_percent.toFixed(2)}%
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
           
           {/* Skeleton Loaders for initial load */}

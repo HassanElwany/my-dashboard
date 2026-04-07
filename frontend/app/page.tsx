@@ -4,9 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Activity } from "lucide-react";
 import { UserProfile, DailyLog, DietPlan, FootballHubData } from "../types";
+
+// Our modular components
 import CreateLogModal from "../components/CreateLogModal";
 import WealthTracker from "../components/WealthTracker";
-// Our modular components
 import SportsHub from "../components/SportsHub";
 import DietArchitect from "../components/DietArchitect";
 import TelemetryLogs from "../components/TelemetryLogs";
@@ -30,7 +31,9 @@ export default function Dashboard() {
 
       const footballRes = await fetch("http://localhost:8000/football/hub", { headers: { Authorization: `Bearer ${token}` }});
       if (footballRes.ok) setFootballData(await footballRes.json());
-    } catch (error) { console.error("Failed to fetch data", error); }
+    } catch (error) { 
+      console.error("Failed to fetch data", error); 
+    }
   }, []);
 
   useEffect(() => {
@@ -46,13 +49,19 @@ export default function Dashboard() {
       } catch (err) {
         localStorage.removeItem("token");
         router.push("/login");
-      } finally { setLoading(false); }
+      } finally { 
+        setLoading(false); 
+      }
     };
     init();
   }, [router, fetchDashboardData]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-[#0D0D1A]"><Activity className="w-10 h-10 text-[#7C3AED] animate-pulse" /></div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0D0D1A]">
+        <Activity className="w-10 h-10 text-[#7C3AED] animate-pulse" />
+      </div>
+    );
   }
 
   const refreshData = () => {
@@ -64,10 +73,19 @@ export default function Dashboard() {
     <main className="min-h-screen bg-[#0D0D1A] text-[#FFFFFF] pb-24 font-sans selection:bg-[#7C3AED]">
       {/* HEADER */}
       <header className="h-[56px] px-6 flex justify-between items-center border-b border-[#2A2A3D]/50 bg-[#0D0D1A] sticky top-0 z-40">
-        <h1 className="text-[20px] font-bold tracking-[0.2em] uppercase bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#5B21B6]">LUMINA</h1>
+        <h1 className="text-[20px] font-bold tracking-[0.2em] uppercase bg-clip-text text-transparent bg-gradient-to-r from-[#7C3AED] to-[#5B21B6]">
+          LUMINA
+        </h1>
         <div className="flex items-center gap-4">
-          <span className="text-[11px] uppercase text-[#9CA3AF] tracking-wider hidden md:block">{user?.email}</span>
-          <button onClick={() => { localStorage.removeItem("token"); router.push("/login"); }} className="text-[#9CA3AF] hover:text-[#EF4444] transition-colors"><LogOut className="w-5 h-5" /></button>
+          <span className="text-[11px] uppercase text-[#9CA3AF] tracking-wider hidden md:block">
+            {user?.email}
+          </span>
+          <button 
+            onClick={() => { localStorage.removeItem("token"); router.push("/login"); }} 
+            className="text-[#9CA3AF] hover:text-[#EF4444] transition-colors"
+          >
+            <LogOut className="w-5 h-5" />
+          </button>
         </div>
       </header>
 
@@ -75,7 +93,6 @@ export default function Dashboard() {
         
         {/* Component Modules */}
         <DietArchitect plans={plans} onPlanGenerated={refreshData} />
-        {/* WEALTH TRACKER HERE */}
         <WealthTracker />
         <SportsHub data={footballData} />
         <TelemetryLogs logs={logs} onLogUpdate={refreshData} />

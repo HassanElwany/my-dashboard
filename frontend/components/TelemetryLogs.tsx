@@ -39,10 +39,11 @@ export default function TelemetryLogs({ logs, onLogUpdate }: { logs: DailyLog[],
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {logs.map((log) => {
-            const totalCalories = log.meals.reduce((sum, meal) => sum + meal.calories, 0);
-            const totalProtein = log.meals.reduce((sum, meal) => sum + meal.protein, 0);
-            const totalCarbs = log.meals.reduce((sum, meal) => sum + meal.carbs, 0);
-            const totalFats = log.meals.reduce((sum, meal) => sum + meal.fats, 0);
+            const meals = log.meals ?? [];
+            const totalCalories = meals.reduce((sum, meal) => sum + meal.calories, 0);
+            const totalProtein = meals.reduce((sum, meal) => sum + meal.protein, 0);
+            const totalCarbs = meals.reduce((sum, meal) => sum + meal.carbs, 0);
+            const totalFats = meals.reduce((sum, meal) => sum + meal.fats, 0);
             const insight = aiInsights[log.id];
 
             return (
@@ -104,7 +105,7 @@ export default function TelemetryLogs({ logs, onLogUpdate }: { logs: DailyLog[],
 
                 {/* Meal Cards */}
                 <div className="space-y-[10px] mb-6 flex-grow">
-                  {log.meals.map((meal, index) => {
+                  {meals.map((meal, index) => {
                     const borderColor = mealBorderColors[index % mealBorderColors.length];
                     return (
                       <div key={meal.id} className={`w-full bg-[#0D0D1A] rounded-[8px] border-l-[4px] ${borderColor} border-y border-r border-[#2A2A3D] p-3 flex justify-between items-center`}>
